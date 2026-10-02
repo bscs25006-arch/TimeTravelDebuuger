@@ -1,0 +1,5 @@
+server
+x64/
+.vs/
+resolve.bin
+session.tdbg
