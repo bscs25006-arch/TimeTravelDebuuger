@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <string>
+#include<cstdlib>
 #include <cstdint>
 #include <fstream>
 #ifndef _WIN32
@@ -354,13 +355,73 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
     int32_t patchCount = 0;
     ifstream in(sourcePath);
     FILE* f = fopen(resolveBinPath, "wb+");
+    if (!in.is_open() || f == nullptr)
+
+    {
+        cout << "error files cannot open!"<<endl;
+        return -1;
+    }
     int64_t offset = 0;
     string line;
     while (readSourceLine(in, line))
     {
         int64_t pos = writeResolveRecord(f, offset, line);
+        string keyword = firstWord(line);
+        if (keyword == "func" && funcCount < MAX_FUNCS)
+        {
+            funcArray[funcCount].funcName = secondWord(line);
+            funcArray[funcCount].byteOffsetInResolveBin = pos;
+            funcCount++;
+        }
+        else if (keyword == "call" && patchCount < MAX_PATCHES)
+        {
+            patches[patchCount].byteOffsetOfOffsetField = pos;
+            patches[patchCount].targetFuncName = secondWord(line);
+
+            patchCount++;
+        }
         offset += 8 + 4 + line.size();
+
     }
+        for (int i = 0; i < patchCount; i++)
+        {
+            int64_t target = -1;
+            for (int j = 0; j < funcCount; j++)
+            {
+                if (funcArray[j].funcName == patches[i].targetFuncName)
+                {
+                    target = funcArray[j].byteOffsetInResolveBin;
+                    break;
+                }
+            }
+            if (target == -1)
+            {
+                cout << "ERROR:call to undefined function"<<patches[i].targetFuncName<<endl;
+                fclose(f);
+                return -1;
+            }
+            fseek(f, patches[i].byteOffsetOfOffsetField, SEEK_SET);
+            fwrite(&target, sizeof(int64_t), 1, f);
+        }
+        int64_t mainOffset = -1;
+        for (int i = 0; i < funcCount; i++)
+        {
+            if (funcArray[i].funcName == "main")
+            {
+                mainOffset = funcArray[i].byteOffsetInResolveBin;
+            }
+      
+        }
+        fclose(f);
+        if (mainOffset == -1)
+        {
+            cout << "error:no main function";
+            return -1;
+        }
+
+    
+
+    return mainOffset;
     // Every source line becomes one record holding the raw line, as-is.
     // resolve() only PEEKS at the leading word(s) -- enough to spot FUNC
     // (remember its position) and CALL (remember which function it needs
@@ -386,6 +447,43 @@ struct Token
 };
 int32_t tokenizeLine(const string& line, Token tokens[], int32_t maxTokens)
 {
+    int32_t count = 0;
+    int i = 0;
+    while (i < (int)line.size() && count < maxTokens)
+    {
+        while (i < (int)line.size() && (line[i] == ' ' || line[i] == '\t'))
+        {
+            i++;
+        }
+        if (i >= (int)line.size())
+        {
+            break;
+        }
+        string word = "";
+        while (i < (int)line.size() && line[i] != ' ' && line[i] != '\t')
+        {
+            word += line[i];
+            i++;
+        }
+        if (count == 0)
+        {
+            tokens[count].type = KEYWORD;
+        }
+        else if (count == 1)
+        {
+            tokens[count].type = IDENTIFIER;
+        }
+        else
+        {
+            tokens[count].type = PARAM;
+        }
+        tokens[count].text = word;
+        count++;
+
+
+    }
+    return count;
+    
     // first word is always a instruction keyword
     // instruction set = [func, func_end, call, set, add, sub, mul and div]
     // next word is identifier like name of a function, variable name
@@ -393,7 +491,93 @@ int32_t tokenizeLine(const string& line, Token tokens[], int32_t maxTokens)
 }
 Snapshot* buildSnapshot(Stack<Frame>& callStack)
 {
+    Snapshot* s = new Snapshot;
+    s->stackDepth = callStack.snapshot_into(s->callStack, MAX_STACK_DEPTH);
+    return s;                                                                                                                                                                                                                                                                                                                                                                                                            
     // build the snapshot based on the callStack given
+}
+bool isnumber(const string& s)
+{
+    if (s.size() == 0)
+    {
+        return false;
+    }
+    int start = 0;
+    if (s[0] == '-')
+    {
+        start = 1;
+    }
+    if (start == s.size())
+    {
+        return false;
+    }
+    for (int i = start; i < s.size(); i++)
+    {
+        if (s[i] < '0' || s[i]>'9')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+int32_t* findvar(Frame& f, const string& name)
+{
+    for (int i = 0; i < f.argc; i++)
+    {
+        if (f.argv[i].name == name)
+        {
+            return &f.argv[i].value;
+        }
+    }
+    for (int i = 0; i < f.localCount; i++)
+    {
+        if (f.locals[i].name == name)
+        {
+            return &f.locals[i].value;
+        }
+    }
+    return nullptr;
+}
+int32_t* getcreate(Frame& f, const string& name)
+{
+    int32_t* p = findvar(f, name);
+    if (p != nullptr)
+    {
+        return p;
+    }
+    if (f.localCount >= MAX_VARS_PER_FRAME)
+    {
+        return nullptr;
+    }
+    for (int i = 0; i < f.argc; i++)
+    {
+        if (f.argv[i].name == name)
+        {
+            return &f.argv[i].value;
+        }
+    }
+    for (int i = 0; i < f.localCount; i++)
+    {
+        if (f.locals[i].name == name)
+        {
+            return &f.locals[i].value;
+        }
+    }
+    return nullptr;
+}
+int32_t valueof(Frame& f, const string& s)
+{
+    if (isnumber(s))
+    {
+        return atoi(s.c_str());
+
+    }
+    int32_t* p = findvar(f, s);
+    if (p == nullptr)
+    {
+        return 0;
+    }
+    return *p;
 }
 void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& timeline)
 {
@@ -429,11 +613,17 @@ int32_t main()
     cout << "VALID!" << endl;
 
     int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
-
-    Timeline timeline;
-    executeProgram("resolve.bin", mainOffset, timeline);
-
-    writeTdbg(timeline, "session.tdbg");
+    if (mainOffset < 0)
+    {
+        return 1;
+    }
+    cout << "main at" << mainOffset << endl;
+    Token t[MAX_TOKENS];
+    int n = tokenizeLine("add b a", t, MAX_TOKENS);
+    for (int i = 0; i < n; i++)
+    {
+        cout << t[i].type << ":" << t[i].text << endl;
+    }
 
     return 0;
 }
