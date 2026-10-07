@@ -11,4 +11,6 @@ and fixing bugs in my code that consume time
 and test main 
 4 october 
 creating helper functions so the execute program does nt have to run again and again
+7 october :
+still doing the resolve bin cuz ive issues regarding it and most things i dont really pick fast(concepts)
 
