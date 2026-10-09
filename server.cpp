@@ -187,6 +187,9 @@ void writeHeader(FILE* f, const TTDBHeader& h)
 {
     fwrite(h.magic, 1, 4, f);
     fwrite(&h.version, sizeof(int32_t), 1, f);
+    fwrite(&h.stepCount, sizeof(int32_t), 1, f);
+    fwrite(&h.indexOffset, sizeof(int64_t), 1, f);
+
 
     // placeholder for other two data members
 }
@@ -582,6 +585,8 @@ int32_t valueof(Frame& f, const string& s)
 void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& timeline)
 {
 
+
+
     // initialize the call stack
     // make the main frame
     // push main frame on the call stack
@@ -591,8 +596,14 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
 }
 
 // PASS 0x3: SERIALIZE TIMELINE
+
 void writeTdbg(Timeline& timeline, const char* tdbgPath)
 {
+ 
+
+
+    
+
     // placeholder for header
     // index array of the size of stepcount from the timeline
     // placing each snapshot in the file while maintaining the index(starting point of each nth snapshot)

@@ -14,3 +14,5 @@ creating helper functions so the execute program does nt have to run again and a
 7 october :
 still doing the resolve bin cuz ive issues regarding it and most things i dont really pick fast(concepts)
 
+9 october:
+adding the timeline and understanding of execute program and fixes issues in resolve program
