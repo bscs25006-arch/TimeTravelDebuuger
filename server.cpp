@@ -552,21 +552,12 @@ int32_t* getcreate(Frame& f, const string& name)
     {
         return nullptr;
     }
-    for (int i = 0; i < f.argc; i++)
-    {
-        if (f.argv[i].name == name)
-        {
-            return &f.argv[i].value;
-        }
-    }
-    for (int i = 0; i < f.localCount; i++)
-    {
-        if (f.locals[i].name == name)
-        {
-            return &f.locals[i].value;
-        }
-    }
-    return nullptr;
+ 
+    int k = f.localCount;
+    f.locals[k].name = name;
+    f.locals[k].value = 0;
+    f.localCount++;
+    return &f.locals[k].value;
 }
 int32_t valueof(Frame& f, const string& s)
 {
@@ -585,7 +576,155 @@ int32_t valueof(Frame& f, const string& s)
 void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& timeline)
 {
 
+    FILE* f=fopen(resolveBinPath,"rb");
+    if (f == nullptr)
+    {
+        cout << "ERROR:cannot open resolvebinpath" << endl;
+        return;
+    }
+    Stack<Frame> callStack;
+    Frame mainFrame;
+    mainFrame.func_name = "main";
+    mainFrame.argc = 0;
+    mainFrame.localCount = 0;
+    mainFrame.returnLine = -1;
 
+    callStack.push(mainFrame);
+    string line;
+    fseek(f, mainOffset, SEEK_SET);
+    readResolveRecord(f, line);
+ 
+   
+
+    while (!callStack.isEmpty())
+    {
+        int64_t recPos = ftell(f);
+        int64_t target = readResolveRecord(f, line);
+        if (target == -1)
+        {
+            cout << "ERROR: went pass the end of the program"<<endl;
+            break;
+        }
+        Token tokens[MAX_TOKENS];
+        int count = tokenizeLine(line, tokens, MAX_TOKENS);
+        if (count == 0)
+        {
+            continue;
+        }
+        string keyword = tokens[0].text;
+        Frame& cur = callStack.peek();
+        if (keyword == "set" || keyword == "add" || keyword == "sub" || keyword == "mul" || keyword == "div")
+        {
+            if (count < 3)
+            {
+                cout << "error: missing operand"<<line<<endl;
+                break;
+            }
+            int32_t* var = getcreate(cur, tokens[1].text);
+            if (var == nullptr)
+            {
+                cout << "ERROR: too many variables"<<line<<endl;
+                break;
+            }
+            int32_t val = valueof(cur, tokens[2].text);
+            if (keyword == "set")
+            {
+                *var = val;
+            }
+            else if (keyword == "add")
+            {
+                *var = *var+val;
+            }
+            else if (keyword == "sub")
+            {
+                *var = *var-val;
+            }
+            else if (keyword == "mul")
+            {
+                *var = *var*val;
+            }
+            else
+            {
+                if (val == 0)
+                {
+                    cout << "ERROR : VAL can not divided by 0";
+                    break;
+                }
+                *var = *var / val;
+            }
+           
+
+
+        }
+        else if (keyword == "call")
+        {
+            if (callStack.depth() >= MAX_STACK_DEPTH)
+            {
+                cout << "stack overflow!" << endl;
+                break;
+
+            }
+           
+
+            fseek(f, target, SEEK_SET);
+            string funcLine;
+            readResolveRecord(f, funcLine);
+            int64_t bodyPos = ftell(f);
+            Token ft[MAX_TOKENS];
+            int func_count = tokenizeLine(funcLine, ft, MAX_TOKENS);
+            int argc = func_count - 2;
+            if (argc != count - 2)
+            {
+                cout << "ERROR:wrong numbers of arguments" << endl;
+                break;
+
+            }
+            Frame nf;
+            nf.func_name = tokens[1].text;
+            nf.argc = argc;
+            nf.localCount = 0;
+            nf.returnLine = (int32_t)recPos;
+            for (int i = 0; i < argc; i++)
+            {
+                nf.argv[i].name = ft[i + 2].text;
+                nf.argv[i].value = valueof(cur,tokens[i+2].text);
+
+
+            }
+            callStack.push(nf);
+            fseek(f, bodyPos, SEEK_SET);
+
+      
+        }
+        else if (keyword == "func_end")
+        {
+            Frame done = callStack.pop();
+            if (callStack.isEmpty())
+            {
+                break;
+            }
+            fseek(f, done.returnLine, SEEK_SET);
+            string calline;
+            readResolveRecord(f, calline);
+            Token ct[MAX_TOKENS];
+            int cc=tokenizeLine(calline, ct, MAX_TOKENS);
+            Frame& call = callStack.peek();
+            for (int k = 0; k < done.argc&& k+2<cc; k++)
+            {
+                int32_t* p = findvar(call, ct[k + 2].text);
+                if (p != nullptr)
+                {
+                    *p = done.argv[k].value;
+                }
+            }
+
+
+        }
+        timeline.record(buildSnapshot(callStack));
+    
+    }
+    
+    fclose(f);
 
     // initialize the call stack
     // make the main frame
@@ -599,8 +738,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
 
 void writeTdbg(Timeline& timeline, const char* tdbgPath)
 {
- 
-
+    
 
     
 
@@ -629,13 +767,9 @@ int32_t main()
     {
         return 1;
     }
-    cout << "main at" << mainOffset << endl;
-    Token t[MAX_TOKENS];
-    int n = tokenizeLine("add b a", t, MAX_TOKENS);
-    for (int i = 0; i < n; i++)
-    {
-        cout << t[i].type << ":" << t[i].text << endl;
-    }
+    Timeline timeline;
+    executeProgram("resolve.bin", mainOffset, timeline);
+   
 
     return 0;
 }
