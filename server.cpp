@@ -92,7 +92,7 @@ public:
     }
     int32_t snapshot_into(T out[], int32_t maxLen)
     {
-        
+
         Node* cur = top;
         int32_t i = 0;
         while (cur != nullptr && i < maxLen)
@@ -102,10 +102,10 @@ public:
             cur = cur->next;
         }
         return i;
-            
-            
-            // copies every frame, top to bottom in the array given as a parameter
-        // this is what buildSnapshot() call, returns count written
+
+
+        // copies every frame, top to bottom in the array given as a parameter
+    // this is what buildSnapshot() call, returns count written
     }
 };
 
@@ -211,7 +211,7 @@ struct PendingPatch
 // PASS 0x0: READING source.bin + VALIDITY CHECK
 bool readSourceLine(ifstream& in, string& out)
 {
-    
+
     string line;
     while (getline(in, line))
     {
@@ -227,18 +227,18 @@ bool readSourceLine(ifstream& in, string& out)
         return true;
     }
     return false;
-    
+
     // reads the next nonblank line
 }
 string firstWord(const string& line)
 {
     string word = "";
     int i = 0;
-    while (i < line.size() && (line[i] == ' '|| line[i]=='\t'))
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t'))
     {
         i++;
     }
-    while (i < line.size() && line[i] != ' '&& line[i]!='\t')
+    while (i < line.size() && line[i] != ' ' && line[i] != '\t')
     {
         word += line[i];
         i++;
@@ -250,7 +250,7 @@ string secondWord(const string& line)
 {
     string word = "";
     int i = 0;
-    while (i < line.size() && (line[i] == ' ' || line[i]=='\t'))
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t'))
     {
         i++;
     }
@@ -270,15 +270,15 @@ string secondWord(const string& line)
     return word;
     // returns the second word
 }
-bool validateProgram(const char* sourcePath)
+bool validity(const char* sourcePath)
 {
     ifstream in(sourcePath);
-        if (!in.is_open())
-        {
-            cout << "ERROR:CANNOT OPEN!" << sourcePath<<endl;
-            return false;
-        }
-    
+    if (!in.is_open())
+    {
+        cout << "ERROR:CANNOT OPEN!" << sourcePath << endl;
+        return false;
+    }
+
     Stack<string> funcstack;
     string line;
     while (readSourceLine(in, line))
@@ -293,17 +293,17 @@ bool validateProgram(const char* sourcePath)
             }
             funcstack.push(secondWord(line));
         }
-            
-            else if (keyword=="func_end")
+
+        else if (keyword == "func_end")
+        {
+            if (funcstack.isEmpty())
             {
-                if (funcstack.isEmpty())
-                {
-                    cout << "ERROR:func_end without matching func" << endl;
-                    return false;
-                }
-                funcstack.pop();
+                cout << "ERROR:func_end without matching func" << endl;
+                return false;
             }
-        
+            funcstack.pop();
+        }
+
     }
     if (!funcstack.isEmpty())
     {
@@ -319,14 +319,14 @@ bool validateProgram(const char* sourcePath)
 // PASS 0x1: RESOLVE() -> resolve.bin
 int64_t writeResolveRecord(FILE* f, int64_t offsetField, const string& text)
 {
-    
+
     int64_t startpos = ftell(f);
     int32_t size = (int32_t)text.size();
     fwrite(&offsetField, sizeof(int64_t), 1, f);
     fwrite(&size, sizeof(int32_t), 1, f);
     fwrite(text.c_str(), 1, size, f);
     return startpos;
-    
+
     // writes one [offset(8B)][size(4B)][string] record at the current file position
     // returns this record's own starting byte position
 }
@@ -347,7 +347,7 @@ int64_t readResolveRecord(FILE* f, string& outText)
     fread(buffer, 1, size, f);
     outText = string(buffer, size);
     return offsetfield;
-    
+
     // reads one record at the current position and advances past it, returns the offset field - the raw line text comes back untouched in outText.
 }
 int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
@@ -361,7 +361,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
     if (!in.is_open() || f == nullptr)
 
     {
-        cout << "error files cannot open!"<<endl;
+        cout << "error files cannot open!" << endl;
         return -1;
     }
     int64_t offset = 0;
@@ -386,43 +386,43 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
         offset += 8 + 4 + line.size();
 
     }
-        for (int i = 0; i < patchCount; i++)
+    for (int i = 0; i < patchCount; i++)
+    {
+        int64_t target = -1;
+        for (int j = 0; j < funcCount; j++)
         {
-            int64_t target = -1;
-            for (int j = 0; j < funcCount; j++)
+            if (funcArray[j].funcName == patches[i].targetFuncName)
             {
-                if (funcArray[j].funcName == patches[i].targetFuncName)
-                {
-                    target = funcArray[j].byteOffsetInResolveBin;
-                    break;
-                }
+                target = funcArray[j].byteOffsetInResolveBin;
+                break;
             }
-            if (target == -1)
-            {
-                cout << "ERROR:call to undefined function"<<patches[i].targetFuncName<<endl;
-                fclose(f);
-                return -1;
-            }
-            fseek(f, patches[i].byteOffsetOfOffsetField, SEEK_SET);
-            fwrite(&target, sizeof(int64_t), 1, f);
         }
-        int64_t mainOffset = -1;
-        for (int i = 0; i < funcCount; i++)
+        if (target == -1)
         {
-            if (funcArray[i].funcName == "main")
-            {
-                mainOffset = funcArray[i].byteOffsetInResolveBin;
-            }
-      
-        }
-        fclose(f);
-        if (mainOffset == -1)
-        {
-            cout << "error:no main function";
+            cout << "ERROR:call to undefined function" << patches[i].targetFuncName << endl;
+            fclose(f);
             return -1;
         }
+        fseek(f, patches[i].byteOffsetOfOffsetField, SEEK_SET);
+        fwrite(&target, sizeof(int64_t), 1, f);
+    }
+    int64_t mainOffset = -1;
+    for (int i = 0; i < funcCount; i++)
+    {
+        if (funcArray[i].funcName == "main")
+        {
+            mainOffset = funcArray[i].byteOffsetInResolveBin;
+        }
 
-    
+    }
+    fclose(f);
+    if (mainOffset == -1)
+    {
+        cout << "error:no main function";
+        return -1;
+    }
+
+
 
     return mainOffset;
     // Every source line becomes one record holding the raw line, as-is.
@@ -486,7 +486,7 @@ int32_t tokenizeLine(const string& line, Token tokens[], int32_t maxTokens)
 
     }
     return count;
-    
+
     // first word is always a instruction keyword
     // instruction set = [func, func_end, call, set, add, sub, mul and div]
     // next word is identifier like name of a function, variable name
@@ -496,7 +496,7 @@ Snapshot* buildSnapshot(Stack<Frame>& callStack)
 {
     Snapshot* s = new Snapshot;
     s->stackDepth = callStack.snapshot_into(s->callStack, MAX_STACK_DEPTH);
-    return s;                                                                                                                                                                                                                                                                                                                                                                                                            
+    return s;
     // build the snapshot based on the callStack given
 }
 bool isnumber(const string& s)
@@ -552,7 +552,7 @@ int32_t* getcreate(Frame& f, const string& name)
     {
         return nullptr;
     }
- 
+
     int k = f.localCount;
     f.locals[k].name = name;
     f.locals[k].value = 0;
@@ -576,7 +576,7 @@ int32_t valueof(Frame& f, const string& s)
 void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& timeline)
 {
 
-    FILE* f=fopen(resolveBinPath,"rb");
+    FILE* f = fopen(resolveBinPath, "rb");
     if (f == nullptr)
     {
         cout << "ERROR:cannot open resolvebinpath" << endl;
@@ -593,8 +593,8 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
     string line;
     fseek(f, mainOffset, SEEK_SET);
     readResolveRecord(f, line);
- 
-   
+
+
 
     while (!callStack.isEmpty())
     {
@@ -602,7 +602,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
         int64_t target = readResolveRecord(f, line);
         if (target == -1)
         {
-            cout << "ERROR: went pass the end of the program"<<endl;
+            cout << "ERROR: went pass the end of the program" << endl;
             break;
         }
         Token tokens[MAX_TOKENS];
@@ -617,13 +617,13 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
         {
             if (count < 3)
             {
-                cout << "error: missing operand"<<line<<endl;
+                cout << "error: missing operand" << line << endl;
                 break;
             }
             int32_t* var = getcreate(cur, tokens[1].text);
             if (var == nullptr)
             {
-                cout << "ERROR: too many variables"<<line<<endl;
+                cout << "ERROR: too many variables" << line << endl;
                 break;
             }
             int32_t val = valueof(cur, tokens[2].text);
@@ -633,15 +633,15 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
             }
             else if (keyword == "add")
             {
-                *var = *var+val;
+                *var = *var + val;
             }
             else if (keyword == "sub")
             {
-                *var = *var-val;
+                *var = *var - val;
             }
             else if (keyword == "mul")
             {
-                *var = *var*val;
+                *var = *var * val;
             }
             else
             {
@@ -652,7 +652,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
                 }
                 *var = *var / val;
             }
-           
+
 
 
         }
@@ -664,7 +664,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
                 break;
 
             }
-           
+
 
             fseek(f, target, SEEK_SET);
             string funcLine;
@@ -687,14 +687,14 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
             for (int i = 0; i < argc; i++)
             {
                 nf.argv[i].name = ft[i + 2].text;
-                nf.argv[i].value = valueof(cur,tokens[i+2].text);
+                nf.argv[i].value = valueof(cur, tokens[i + 2].text);
 
 
             }
             callStack.push(nf);
             fseek(f, bodyPos, SEEK_SET);
 
-      
+
         }
         else if (keyword == "func_end")
         {
@@ -707,9 +707,9 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
             string calline;
             readResolveRecord(f, calline);
             Token ct[MAX_TOKENS];
-            int cc=tokenizeLine(calline, ct, MAX_TOKENS);
+            int cc = tokenizeLine(calline, ct, MAX_TOKENS);
             Frame& call = callStack.peek();
-            for (int k = 0; k < done.argc&& k+2<cc; k++)
+            for (int k = 0; k < done.argc && k + 2 < cc; k++)
             {
                 int32_t* p = findvar(call, ct[k + 2].text);
                 if (p != nullptr)
@@ -721,9 +721,9 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
 
         }
         timeline.record(buildSnapshot(callStack));
-    
+
     }
-    
+
     fclose(f);
 
     // initialize the call stack
@@ -735,12 +735,37 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
 }
 
 // PASS 0x3: SERIALIZE TIMELINE
+void writestring(FILE* f, const string& s)
+{
+    int32_t len = (int32_t)s.size();
+    fwrite(&len, sizeof(int32_t), 1, f);
+    fwrite(s.c_str(), 1, len, f);
 
+}
+void writeframe(FILE* f, const Frame& fr)
+{
+    writestring(f, fr.func_name);
+    fwrite(&fr.argc, sizeof(int32_t), 1, f);
+    for (int i = 0; i < fr.argc; i++)
+    {
+        writestring(f, fr.argv[i].name);
+        fwrite(&fr.argv[i].value, sizeof(int32_t), 1, f);
+    }
+    fwrite(&fr.returnLine, sizeof(int32_t), 1, f);
+    fwrite(&fr.localCount, sizeof(int32_t), 1, f);
+    for (int i = 0; i < fr.localCount; i++)
+    {
+        writestring(f, fr.locals[i].name);
+        fwrite(&fr.locals[i].value, sizeof(int32_t), 1, f);
+    }
+
+}
 void writeTdbg(Timeline& timeline, const char* tdbgPath)
 {
-    
+  
 
-    
+
+
 
     // placeholder for header
     // index array of the size of stepcount from the timeline
@@ -752,12 +777,12 @@ void writeTdbg(Timeline& timeline, const char* tdbgPath)
 int32_t main()
 {
 
-    if (!validateProgram("source.bin"))
+    if (!validity("source.bin"))
     {
-       
+
         // send an error response instead of a .tdbg file
         return 1;
-     
+
 
     }
     cout << "VALID!" << endl;

@@ -18,3 +18,5 @@ still doing the resolve bin cuz ive issues regarding it and most things i dont r
 adding the timeline and understanding of execute program and fixes issues in resolve program
 10 october:
 execute program
+11 october:
+write tbdg helper functions 
