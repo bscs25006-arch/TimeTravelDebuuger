@@ -270,7 +270,7 @@ string secondWord(const string& line)
     return word;
     // returns the second word
 }
-bool validity(const char* sourcePath)
+bool validateProgram(const char* sourcePath)
 {
     ifstream in(sourcePath);
     if (!in.is_open())
@@ -370,8 +370,27 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
     {
         int64_t pos = writeResolveRecord(f, offset, line);
         string keyword = firstWord(line);
-        if (keyword == "func" && funcCount < MAX_FUNCS)
+
+        if (keyword == "func")
         {
+            string name = secondWord(line);
+            for (int i = 0; i < funcCount; i++)
+            {
+                if (funcArray[i].funcName == name)
+                {
+                    cout << "error : duplicate function "<< endl;
+                    fclose(f);
+                    return -1;
+                }
+            }
+            if (funcCount >= MAX_FUNCS)
+            {
+                cout << "error :too many function "<< endl;
+                fclose(f);
+                return -1;
+            }
+               
+           
             funcArray[funcCount].funcName = secondWord(line);
             funcArray[funcCount].byteOffsetInResolveBin = pos;
             funcCount++;
@@ -386,6 +405,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
         offset += 8 + 4 + line.size();
 
     }
+  
     for (int i = 0; i < patchCount; i++)
     {
         int64_t target = -1;
@@ -599,8 +619,8 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
     while (!callStack.isEmpty())
     {
         int64_t recPos = ftell(f);
-        int64_t target = readResolveRecord(f, line);
-        if (target == -1)
+        int64_t tar = readResolveRecord(f, line);
+        if (tar == -1)
         {
             cout << "ERROR: went pass the end of the program" << endl;
             break;
@@ -612,7 +632,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
             continue;
         }
         string keyword = tokens[0].text;
-        Frame& cur = callStack.peek();
+        Frame& curre = callStack.peek();
         if (keyword == "set" || keyword == "add" || keyword == "sub" || keyword == "mul" || keyword == "div")
         {
             if (count < 3)
@@ -620,13 +640,13 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
                 cout << "error: missing operand" << line << endl;
                 break;
             }
-            int32_t* var = getcreate(cur, tokens[1].text);
+            int32_t* var = getcreate(curre, tokens[1].text);
             if (var == nullptr)
             {
                 cout << "ERROR: too many variables" << line << endl;
                 break;
             }
-            int32_t val = valueof(cur, tokens[2].text);
+            int32_t val = valueof(curre, tokens[2].text);
             if (keyword == "set")
             {
                 *var = val;
@@ -666,32 +686,44 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
             }
 
 
-            fseek(f, target, SEEK_SET);
+            fseek(f, tar, SEEK_SET);
             string funcLine;
             readResolveRecord(f, funcLine);
             int64_t bodyPos = ftell(f);
             Token ft[MAX_TOKENS];
+            
             int func_count = tokenizeLine(funcLine, ft, MAX_TOKENS);
             int argc = func_count - 2;
-            if (argc != count - 2)
+            for (int i = 2; i < func_count; i++)
+            {
+                for (int k = i + 1; k < func_count; k++)
+                {
+                    if (ft[i].text == ft[k].text)
+                    {
+                        cout << "DUPLICATES PARAMETERS"<<ft[i].text << endl;
+                        return;
+                    }
+                }
+            }
+            if (argc != count - 2 || argc>MAX_VARS_PER_FRAME)
             {
                 cout << "ERROR:wrong numbers of arguments" << endl;
                 break;
 
             }
-            Frame nf;
-            nf.func_name = tokens[1].text;
-            nf.argc = argc;
-            nf.localCount = 0;
-            nf.returnLine = (int32_t)recPos;
+            Frame newframe;
+            newframe.func_name = tokens[1].text;
+            newframe.argc = argc;
+            newframe.localCount = 0;
+            newframe.returnLine = (int32_t)recPos;
             for (int i = 0; i < argc; i++)
             {
-                nf.argv[i].name = ft[i + 2].text;
-                nf.argv[i].value = valueof(cur, tokens[i + 2].text);
+                newframe.argv[i].name = ft[i + 2].text;
+                newframe.argv[i].value = valueof(curre, tokens[i + 2].text);
 
 
             }
-            callStack.push(nf);
+            callStack.push(newframe);
             fseek(f, bodyPos, SEEK_SET);
 
 
@@ -762,7 +794,46 @@ void writeframe(FILE* f, const Frame& fr)
 }
 void writeTdbg(Timeline& timeline, const char* tdbgPath)
 {
-  
+    FILE* f = fopen(tdbgPath, "wb+");
+    if (f == nullptr)
+    {
+        cout << "ERROR: cannot open" << tdbgPath << endl;
+        return;
+    }
+    TTDBHeader head;
+    head.magic[0] = 'T';
+    head.magic[1] = 'T';
+    head.magic[2] = 'D';
+    head.magic[3] = 'B';
+    head.version = 1;
+    head.stepCount = timeline.getStepCount();
+    head.indexOffset = 0;
+    writeHeader(f, head);
+    int32_t steps = timeline.getStepCount();
+    int64_t* in = new int64_t[steps];
+
+    TimelineNode* cur = timeline.begin();
+    int32_t n = 0;
+    while (cur != nullptr)
+    {
+        in[n] = ftell(f);
+        Snapshot* s = cur->data;
+        fwrite(&s->stackDepth, sizeof(int32_t), 1, f);
+        for (int i = 0; i < s->stackDepth; i++)
+        {
+            writeframe(f, s->callStack[i]);
+        }
+        cur = cur->next;
+        n++;
+
+    }
+    head.indexOffset = ftell(f);
+    fwrite(in, sizeof(int64_t), steps, f);
+
+    fseek(f, 0, SEEK_SET);
+    writeHeader(f, head);
+    delete[] in;
+    fclose(f);
 
 
 
@@ -777,7 +848,7 @@ void writeTdbg(Timeline& timeline, const char* tdbgPath)
 int32_t main()
 {
 
-    if (!validity("source.bin"))
+    if (!validateProgram("source.bin"))
     {
 
         // send an error response instead of a .tdbg file
@@ -794,7 +865,7 @@ int32_t main()
     }
     Timeline timeline;
     executeProgram("resolve.bin", mainOffset, timeline);
-   
+    writeTdbg(timeline, "session.tdbg");
 
     return 0;
 }

@@ -20,3 +20,5 @@ adding the timeline and understanding of execute program and fixes issues in res
 execute program
 11 october:
 write tbdg helper functions 
+13 october:
+completed check on ubuntu 
