@@ -703,7 +703,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
                         cout << "DUPLICATES PARAMETERS"<<ft[i].text << endl;
                         return;
                     }
-                }
+                } 
             }
             if (argc != count - 2 || argc>MAX_VARS_PER_FRAME)
             {
