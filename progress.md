@@ -22,3 +22,9 @@ execute program
 write tbdg helper functions 
 13 october:
 completed check on ubuntu 
+
+6 november:
+complete the queue and developed teh understanding of client and server
+7 november :
+complete the loader.cpp
+
