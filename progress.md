@@ -26,5 +26,21 @@ completed check on ubuntu
 6 november:
 complete the queue and developed teh understanding of client and server
 7 november :
-complete the loader.cpp
 
+LOADER COMPLETE IMPLEMENTAION:
+loader mei meinay pehlay queue complete ki or  j o function tha sendall usme implenetation yeh ki thi k agr sari bytes transfer hojyain toh or check up add kernay hain 
+or sendError mei agr bytes transfer na hun toh error ir error ka bhi like w ehave to implement the error conditions also like specific headings for errors
+so we have error message instaed of nothing  or ohir humnay different types k socket banaay hain like listen socket jisme humanay AFINET (ADDRESS FAMILY) INET (IPV4) OR SOCK_STREAM matlab TCP
+OR SOCK_CLOEXEC ek extra flag hai. Iska matlab:agar yeh program koi aur program shuru kare (jaise system("./server &")) to naye program mein yeh socket apne aap band ho jaye is se server ko load balancer ke sockets ki copy nahi milti.
+or phir connect to socket mei same naya socket 
+or phir connection k liyee start server and then attempts tak server ko connect kero 
+relayononeclient mei humanay sab se phela serever wake up krna hai then hum ne client se bytes ko thora thora transfer kerna hais server tk or phir server se recieve ker k client tak
+or phir c.sock or serversock band kerni hai 
+or acceptclients mei hum clients ko accept kertay hain max 8 
+or dispatcherloop mei sirf oneclient se deal kertay hain
+
+
+OH HAN LAST PHASE1 MEI IDK K HAR FUNCTION KO EXPLAIN KERNA THA 
+
+8 NOVEMBER:
+or manay client ko smjha hai or sendall  and receive all k functions banaye hain helper mei cuz we can use from helper in client to receive all the bytes count the total bytes and loop will run until n bytes or sendall bhi bss usme MSG_NOTIONAL USE kia hai jo k agar samne wala pehle hi disconnect ho chuka ho Linux normally program ko SIGPIPE signal bhej kar band kar deta hai Is flag se program nahi crash hota bas send -1 deta hai  false return krtya hain

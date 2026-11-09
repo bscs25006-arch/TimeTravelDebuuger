@@ -27,7 +27,6 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
-#include<cstring>
 #include <thread>
 #include <mutex>
 #include <unistd.h>
@@ -198,8 +197,7 @@ int createListenSocket(int port)
     setsockopt(soc,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
 
 
-    sockaddr_in addr;
-    memset(&addr,0,sizeof(addr));
+    sockaddr_in addr={};
     addr.sin_family=AF_INET;
     addr.sin_addr.s_addr=htonl(INADDR_ANY);
     addr.sin_port=htons(port);
@@ -230,8 +228,7 @@ int connectToServer(const char* host, int port)
   
 
 
-    sockaddr_in addr;
-    memset(&addr,0,sizeof(addr));
+    sockaddr_in addr={};
     addr.sin_family=AF_INET;
     addr.sin_port=htons(port);
     if(inet_pton(AF_INET,host,&addr.sin_addr)!=1)
@@ -300,10 +297,18 @@ int connectToServerWithWakeup()
 
 void relayOneClient(ClientInfo& c)
 {
-    int serverSock=connectToServer();
+        // 1. serverSock = connectToServerWithWakeup().
+    //    If it is -1: sendError "backend server failed to start", close clientSock, return.
+    // 3. Client -> server: repeat recv() from clientSock into a buffer of IO_BUFFER_SIZE and sendAll() it to serverSock.
+    //    Stop when recv() returns 0 (the client finished sending) or fails.
+    // 4. Call shutdown(serverSock, SHUT_WR), so the server knows the string is complete.
+    // 5. Server -> client: repeat recv() from serverSock and sendAll() to clientSock.
+    //    Stop when recv() returns 0 (the server sent its whole reply and closed) or fails.
+    // 6. Close both sockets.
+    int serverSock=connectToServerWithWakeup();
     if(serverSock<0)
     {
-        sendError(c.sock,"backend server is not connected");
+        sendError(c.sock,"backend server is not available");
         close(c.sock);
         return;
 
@@ -352,6 +357,14 @@ void relayOneClient(ClientInfo& c)
 
 void acceptLoop(int listenSock)
 {
+        // Repeat: accept() a new client. 
+    //  If pendingClients.size() is already MAX_PENDING_CLIENTS: unlock, sendError "server busy, try again later",
+    // else sps
+    // Lock queueMutex.
+    //   close the client, and go on.
+    //   Otherwise enqueue the client socket.
+    // Never wait for the server here, so new clients are always accepted quickly.
+    // If accept() fails, print the error and keep going (do not end the thread).
 
     while(flag) 
     {
@@ -367,7 +380,7 @@ void acceptLoop(int listenSock)
         ClientInfo info;
         info.sock=sock;
         char ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_NET,&addr.sin_addr,ip,sizeof(ip));
+        inet_ntop(AF_INET,&addr.sin_addr,ip,sizeof(ip));
         info.address=ip;
         info.port=nthos(addr.sin_port);
         info.arrivedAt=time(nullptr);
@@ -387,14 +400,7 @@ void acceptLoop(int listenSock)
             close(sock);
         }
     }
-    // Repeat: accept() a new client. 
-    //  If pendingClients.size() is already MAX_PENDING_CLIENTS: unlock, sendError "server busy, try again later",
-    // else sps
-    // Lock queueMutex.
-    //   close the client, and go on.
-    //   Otherwise enqueue the client socket.
-    // Never wait for the server here, so new clients are always accepted quickly.
-    // If accept() fails, print the error and keep going (do not end the thread).
+
 }
 void dispatcherLoop()
 {
