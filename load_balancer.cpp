@@ -60,6 +60,7 @@ class Queue
     {
         T data;
         Node* next;
+        Node(const T& d) : data(d), next(nullptr) {}
     };
     Node* front, * rear;
     int count;
@@ -149,33 +150,28 @@ sig_atomic_t flag = 1;
 
 
 // ---- Basic socket helpers ----
-bool sendAll(int sock, const char* buf, size_t n)
-{
 
-
-    size_t sent=0;
-    while(sent<n)
-    {
-        ssize_t s=send(sock,buf+sent,n-sent,0);
-        if(s<=0)
-        {
-            return false;
-        }
-        sent+=s;
-    }
-    return true;
-    // Reply format: [status: 1 byte][sending_material][checksum: 4 bytes].
-    // send() may send fewer bytes than asked for, so keep calling it until all n bytes are sent.
-
-}
 bool sendError(int sock, const string& message)
 {
     char status=1;
+    Crc crc;
+    crc.addBytes(&status,1);
+    crc.addBytes(message.c_str(),message.size());
+    char trailer[4];
+    numberToFourBytes(crc.finish(),trailer);
+
     if(!sendAll(sock,&status,1))
-    return false;
+    {
+         return false;
+    }
     else if (!sendAll(sock,message.c_str(),message.size()))    {
         return false;
  
+
+    }
+    if(!sendAll(sock,trailer,4))
+    {
+        return false;
     }
    
 
@@ -269,7 +265,7 @@ int connectToServerWithWakeup()
     {
         return soc;
     }
-    if(!startServer())
+    if(!startServer(serverPort))
     {
         return -1;
     }
@@ -308,6 +304,11 @@ void relayOneClient(ClientInfo& c)
     int serverSock=connectToServerWithWakeup();
     if(serverSock<0)
     {
+        char junk[IO_BUFFER_SIZE];
+        while(recv(c.sock,junk,IO_BUFFER_SIZE,0)>0)
+        {
+
+        }
         sendError(c.sock,"backend server is not available");
         close(c.sock);
         return;
@@ -382,7 +383,7 @@ void acceptLoop(int listenSock)
         char ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET,&addr.sin_addr,ip,sizeof(ip));
         info.address=ip;
-        info.port=nthos(addr.sin_port);
+        info.port=ntohs(addr.sin_port);
         info.arrivedAt=time(nullptr);
 
         bool full=false;
@@ -445,9 +446,26 @@ void handler(int sg) {
 int main(int argc, char* argv[])
 {
 
-    signal(SIGINT, handler); // whenever ctrl+c will be pressed to exit the program the flag wll be set so insead of using infinite loop you can loop on flag to safely close things and exit
+ // whenever ctrl+c will be pressed to exit the program the flag wll be set so insead of using infinite loop you can loop on flag to safely close things and exit
     // 2. listenSock = createListenSocket(LB_PORT).
     // 3. Start a thread that runs acceptLoop(listenSock) and detach it.
     // 4. Call dispatcherLoop().
+    signal(SIGINT, handler);
+
+    if (argc >= 3)
+    {
+        serverHost = argv[1];
+        serverPort = atoi(argv[2]);
+    }
+
+    int listenSock = createListenSocket(lbPort);
+    cout << "Load balancer listening on port " << lbPort << endl;
+
+    thread t(acceptLoop, listenSock);
+    t.detach();
+
+    dispatcherLoop();
+
+    close(listenSock);
     return 0;
 }

@@ -12,22 +12,23 @@
 #include<cstdlib>
 #include <cstdint>
 #include <fstream>
-#ifndef _WIN32
 #include <unistd.h>
 #include <sys/socket.h>
-#endif
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include"helper.h"
 #include <cstdio>
 using namespace std;
 
 // ---- Constants ----
-const int32_t MAX_VARS_PER_FRAME = 16;
-const int32_t MAX_STACK_DEPTH = 64;
+
 const int32_t MAX_FUNCS = 128;
 const int32_t MAX_TOKENS = MAX_VARS_PER_FRAME + 2; // kW + func_name + upto 16 params/args
 const int32_t MAX_PATCHES = MAX_FUNCS * 4;
 const uint64_t MAX_SOURCE_BYTES = 15ULL * 1024 * 1024; // sanity cap on the declared file length
 const int32_t IO_BUFFER_SIZE = 64 * 1024;                  // fixed buffer for streaming to/from disk
-const int32_t SOCKET_TIMEOUT_SEC = 5;                      // TODO: apply as SO_RCVTIMEO so a deadclient can't hang the server forever
+const int32_t SOCKET_TIMEOUT_SEC = 5;      
+string LastError;                // TODO: apply as SO_RCVTIMEO so a deadclient can't hang the server forever
 
 // ---- Custom data structures
 
@@ -109,15 +110,8 @@ public:
     }
 };
 
-
 // Timeline : doubly linked list of Snapshots
-struct Snapshot; // fwd declaration;
-struct TimelineNode
-{
-    Snapshot* data;
-    TimelineNode* next;
-    TimelineNode* prev;
-};
+
 class Timeline
 {
     TimelineNode* head, * tail;
@@ -154,35 +148,21 @@ public:
     {
         return stepCount;
     }
+    ~Timeline()
+    {
+        TimelineNode* cur=head;
+        while(cur!=nullptr)
+        {
+        TimelineNode* nxt = cur->next;
+        delete cur->data;
+        delete cur;
+        cur = nxt;
+
+        }
+    }
 };
 
-// Core structs
-struct Variable
-{
-    string name;
-    int32_t value;
-};
-struct Frame
-{
-    string func_name;
-    int32_t argc;
-    Variable argv[MAX_VARS_PER_FRAME];
-    int32_t returnLine;
-    Variable locals[MAX_VARS_PER_FRAME];
-    int32_t localCount;
-};
-struct Snapshot
-{
-    Frame callStack[MAX_STACK_DEPTH];
-    int32_t stackDepth;
-};
-struct TTDBHeader
-{
-    char magic[4]; // "TTDB"
-    int32_t version;
-    int32_t stepCount;
-    int64_t indexOffset;
-};
+
 void writeHeader(FILE* f, const TTDBHeader& h)
 {
     fwrite(h.magic, 1, 4, f);
@@ -195,16 +175,6 @@ void writeHeader(FILE* f, const TTDBHeader& h)
 }
 
 // resolve.bin - bookkeeping
-struct FuncEntry
-{
-    string funcName;
-    int64_t byteOffsetInResolveBin; // where this function's FUNC header record sits
-};
-struct PendingPatch
-{
-    int64_t byteOffsetOfOffsetField; // where in resolve.bin to seek back and overwrite
-    string targetFuncName;
-};
 
 
 
@@ -275,7 +245,7 @@ bool validateProgram(const char* sourcePath)
     ifstream in(sourcePath);
     if (!in.is_open())
     {
-        cout << "ERROR:CANNOT OPEN!" << sourcePath << endl;
+        LastError= string("ERROR:CANNOT OPEN!") + sourcePath ;
         return false;
     }
 
@@ -288,7 +258,7 @@ bool validateProgram(const char* sourcePath)
         {
             if (!funcstack.isEmpty())
             {
-                cout << "nested function declaration!" << line << endl;
+                LastError= string("nested function declaration!") + line ;
                 return false;
             }
             funcstack.push(secondWord(line));
@@ -298,7 +268,7 @@ bool validateProgram(const char* sourcePath)
         {
             if (funcstack.isEmpty())
             {
-                cout << "ERROR:func_end without matching func" << endl;
+                LastError= "ERROR:func_end without matching func";
                 return false;
             }
             funcstack.pop();
@@ -307,7 +277,7 @@ bool validateProgram(const char* sourcePath)
     }
     if (!funcstack.isEmpty())
     {
-        cout << "ERROR:func without func_end" << endl;
+        LastError="ERROR:func without func_end";
         return false;
 
     }
@@ -361,7 +331,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
     if (!in.is_open() || f == nullptr)
 
     {
-        cout << "error files cannot open!" << endl;
+        LastError="error files cannot open!";
         return -1;
     }
     int64_t offset = 0;
@@ -378,7 +348,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
             {
                 if (funcArray[i].funcName == name)
                 {
-                    cout << "error : duplicate function "<< endl;
+                LastError= "error : duplicate function ";
                     fclose(f);
                     return -1;
                 }
@@ -419,7 +389,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
         }
         if (target == -1)
         {
-            cout << "ERROR:call to undefined function" << patches[i].targetFuncName << endl;
+            LastError=string("ERROR:call to undefined function") +patches[i].targetFuncName ;
             fclose(f);
             return -1;
         }
@@ -438,7 +408,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
     fclose(f);
     if (mainOffset == -1)
     {
-        cout << "error:no main function";
+        LastError="error:no main function";
         return -1;
     }
 
@@ -599,7 +569,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
     FILE* f = fopen(resolveBinPath, "rb");
     if (f == nullptr)
     {
-        cout << "ERROR:cannot open resolvebinpath" << endl;
+        LastError="ERROR:cannot open resolvebinpath" ;
         return;
     }
     Stack<Frame> callStack;
@@ -622,7 +592,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
         int64_t tar = readResolveRecord(f, line);
         if (tar == -1)
         {
-            cout << "ERROR: went pass the end of the program" << endl;
+            LastError= "ERROR: went pass the end of the program";
             break;
         }
         Token tokens[MAX_TOKENS];
@@ -637,13 +607,13 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
         {
             if (count < 3)
             {
-                cout << "error: missing operand" << line << endl;
+                LastError= string("error: missing operand" )+ line ;
                 break;
             }
             int32_t* var = getcreate(curre, tokens[1].text);
             if (var == nullptr)
             {
-                cout << "ERROR: too many variables" << line << endl;
+                LastError= string("ERROR: too many variables") + line;
                 break;
             }
             int32_t val = valueof(curre, tokens[2].text);
@@ -667,7 +637,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
             {
                 if (val == 0)
                 {
-                    cout << "ERROR : VAL can not divided by 0";
+                    LastError= "ERROR : VAL can not divided by 0";
                     break;
                 }
                 *var = *var / val;
@@ -680,7 +650,7 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
         {
             if (callStack.depth() >= MAX_STACK_DEPTH)
             {
-                cout << "stack overflow!" << endl;
+                LastError="stack overflow!";
                 break;
 
             }
@@ -700,14 +670,15 @@ void executeProgram(const char* resolveBinPath, int64_t mainOffset, Timeline& ti
                 {
                     if (ft[i].text == ft[k].text)
                     {
-                        cout << "DUPLICATES PARAMETERS"<<ft[i].text << endl;
-                        return;
+                        LastError =string("DUPLICATES PARAMETERS")+ft[i].text ;
+                        fclose(f);
+                                                return;
                     }
                 } 
             }
             if (argc != count - 2 || argc>MAX_VARS_PER_FRAME)
             {
-                cout << "ERROR:wrong numbers of arguments" << endl;
+                LastError= "ERROR:wrong numbers of arguments";
                 break;
 
             }
@@ -797,7 +768,7 @@ void writeTdbg(Timeline& timeline, const char* tdbgPath)
     FILE* f = fopen(tdbgPath, "wb+");
     if (f == nullptr)
     {
-        cout << "ERROR: cannot open" << tdbgPath << endl;
+        LastError=string("ERROR: cannot open" )+tdbgPath;
         return;
     }
     TTDBHeader head;
@@ -844,28 +815,154 @@ void writeTdbg(Timeline& timeline, const char* tdbgPath)
     // after timeline add the index array i the file
     // update the header
 }
-// main section
-int32_t main()
-{
 
-    if (!validateProgram("source.bin"))
+bool receiveupload(int con,const char* path,string& err)
+{
+    Trailchecker checking;
+    char buffer[IO_BUFFER_SIZE];
+    FILE* out=fopen(path,"wb");
+    if(out==nullptr)
     {
 
-        // send an error response instead of a .tdbg file
-        return 1;
+        err = "server cannot save source";
+        return false;
+    }
+    bool gotstatus=false;
+    while(true)
+    {
+        ssize_t r = recv(con, buffer, IO_BUFFER_SIZE, 0);
+        if (r < 0)
+        {
+            fclose(out);
+            err = "connection error";
+            return false;
+        }
+        if (r == 0)
+            break;
 
+        string released;
+        checking.feed(buffer,r,released);
+        size_t startat=0;
+        if(!gotstatus && !released.empty())
+        {
+            gotstatus=true;
+            startat=1;
+
+        } 
+        if (released.size() > startat)
+        {
+            fwrite(released.data() + startat, 1, released.size() - startat, out);
+        }
 
     }
-    cout << "VALID!" << endl;
+    fclose(out);
+    if(!gotstatus||!checking.verify())
+    {
+          err = "upload checksum mismatch";
+        return false;
+    }
+    return true;
 
+}
+bool errorreply(int con,const string& msg)
+{
+    char status = 1;
+    Crc crc;
+    crc.addBytes(&status, 1);
+    crc.addBytes(msg.c_str(), msg.size());
+    char trailer[4];
+    numberToFourBytes(crc.finish(), trailer);
+    return sendAll(con, &status, 1)&& sendAll(con, msg.c_str(), msg.size())&& sendAll(con, trailer, 4);
+}
+bool sendFilereply(int con, const char* path)
+{
+    FILE* f = fopen(path, "rb");
+    if (f == nullptr)
+        return errorreply(con, "server cannot read session file");
+
+    char status = 0;
+    Crc crc;
+    crc.addBytes(&status, 1);
+    if (!sendAll(con, &status, 1))
+    {
+        fclose(f);
+        return false;
+    }
+
+    char buffer[IO_BUFFER_SIZE];
+    size_t got;
+    while ((got = fread(buffer, 1, IO_BUFFER_SIZE, f)) > 0)
+    {
+        crc.addBytes(buffer, got);
+        if (!sendAll(con, buffer, got))
+        {
+            fclose(f);
+            return false;
+        }
+    }
+    fclose(f);
+
+    char trailer[4];
+    numberToFourBytes(crc.finish(), trailer);
+    return sendAll(con, trailer, 4);
+}
+
+void serveOneClient(int con)
+{
+    LastError = "";
+    string err;
+    if (!receiveupload(con, "source.bin", err))
+    {
+        errorreply(con, err);
+        return;
+    }
+    if (!validateProgram("source.bin"))
+    {
+        errorreply(con, LastError);
+        return;
+    }
     int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
     if (mainOffset < 0)
     {
-        return 1;
+        errorreply(con, LastError);
+        return;
     }
     Timeline timeline;
     executeProgram("resolve.bin", mainOffset, timeline);
     writeTdbg(timeline, "session.tdbg");
+    sendFilereply(con, "session.tdbg");
+}
+// main section
+int32_t main(int argc, char* argv[])
+{
+    if (argc < 2)
+    {
+        cout << "usage: ./server <port>" << endl;
+        return 1;
+    }
+    int port = atoi(argv[1]);
 
-    return 0;
+    int listenSock = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (listenSock < 0) { perror("socket"); return 1; }
+
+    int yes = 1;
+    setsockopt(listenSock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(port);
+    if (bind(listenSock, (sockaddr*)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
+    if (listen(listenSock, 8) < 0) { perror("listen"); return 1; }
+
+    cout << "server listening on port " << port << endl;
+
+    while (true)
+    {
+        int con = accept(listenSock, nullptr, nullptr);
+        if (con < 0)
+            continue;
+        serveOneClient(con);
+        close(con);
+    }
 }

@@ -44,3 +44,23 @@ OH HAN LAST PHASE1 MEI IDK K HAR FUNCTION KO EXPLAIN KERNA THA
 
 8 NOVEMBER:
 or manay client ko smjha hai or sendall  and receive all k functions banaye hain helper mei cuz we can use from helper in client to receive all the bytes count the total bytes and loop will run until n bytes or sendall bhi bss usme MSG_NOTIONAL USE kia hai jo k agar samne wala pehle hi disconnect ho chuka ho Linux normally program ko SIGPIPE signal bhej kar band kar deta hai Is flag se program nahi crash hota bas send -1 deta hai  false return krtya hain
+ 9 november:
+ client type kia connecttohost upload source receive response wur requestdebugfile
+ helper.h mei recvall or sendall constants structs banaye
+ checksum trailer class banai 
+ 10 nvember:
+ client ka remaining complete kia .tbdg parha(openTdbg, readSnapshotAt, index aur seekg)
+ session commands likhe :start ,prev,jump,next/prv,help,quit
+ client ko complete kiya or prompt chala ker dekha 
+ 11 november:
+ Server ko Phase 02 ke liye update kiya.
+Ab server port argument leta hai, socket par suntaa hai upload receive karta hai
+  aur chaaron passes chala kar .tdbg wapas bhejta hai
+Errors ko cout ki jagah string mein rakha taake client tak bheje ja sakein
+Timeline mein destructor lagaya taake memory leak na ho
+ Teeno programs saath chala kar test kiye: start aur next theek chale
+
+ 12 november:
+ loader balancer ke relay mei checksum verify 
+ error cases ka test
+ 
