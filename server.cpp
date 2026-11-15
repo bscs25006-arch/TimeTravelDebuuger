@@ -332,6 +332,10 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
 
     {
         LastError="error files cannot open!";
+            if (f != nullptr)
+            {
+        fclose(f);
+            }
         return -1;
     }
     int64_t offset = 0;
@@ -355,7 +359,7 @@ int64_t resolveProgram(const char* sourcePath, const char* resolveBinPath)
             }
             if (funcCount >= MAX_FUNCS)
             {
-                cout << "error :too many function "<< endl;
+                LastError="error :too many function ";
                 fclose(f);
                 return -1;
             }
@@ -927,9 +931,27 @@ void serveOneClient(int con)
         errorreply(con, LastError);
         return;
     }
+
     Timeline timeline;
     executeProgram("resolve.bin", mainOffset, timeline);
+    if(LastError!="")
+    {
+        errorreply(con, LastError);
+        return;
+
+    }
+    if(timeline.getStepCount()==0)
+    {
+        errorreply(con, "program produced no stesp");
+        return;
+    }
     writeTdbg(timeline, "session.tdbg");
+   if(LastError!="")
+    {
+        errorreply(con, LastError);
+        return;
+
+    }
     sendFilereply(con, "session.tdbg");
 }
 // main section

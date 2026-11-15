@@ -239,23 +239,37 @@ bool openTdbg(const char* path, TdbgReader& r)
     in.read((char*)&H.version, 4);
     in.read((char*)&H.stepCount, 4);
     in.read((char*)&H.indexOffset, 8);
-    if (!in) return false;                   
+    if (!in) 
+    {
+        return false;
+    }                   
 
     if (H.magic[0] != 'T' || H.magic[1] != 'T' || H.magic[2] != 'D' || H.magic[3] != 'B')
+    {
         return false;
+    }
 
     in.seekg(0, ios::end);
     int64_t fileSize = in.tellg();
     if (H.stepCount <= 0 || H.indexOffset < 20 ||H.indexOffset + (int64_t)H.stepCount * 8 > fileSize)
+    {
         return false;
+    }
 
     in.seekg(H.indexOffset, ios::beg);
+
     vector<int64_t> idx(H.stepCount);
+
     in.read((char*)idx.data(), (streamsize)H.stepCount * 8);  
     if (!in) return false;
     for (int32_t i = 0; i < H.stepCount; i++)
+    {
         if (idx[i] < 20 || idx[i] >= H.indexOffset)
-            return false;
+        {
+             return false;
+        }
+    }
+          
 
     r.header = H;
     r.index = idx;
